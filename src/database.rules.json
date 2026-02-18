@@ -1,0 +1,46 @@
+
+{
+  "rules": {
+    "users": {
+      // Admins can read the whole list, other roles can only read their own data
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin')",
+      "$uid": {
+        // A user can read their own profile, a coordinator can read a volunteer profile, or an admin can read any profile.
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'coordinator' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        // A user can write their own profile, or an admin can write any profile
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        // Added 'admin' as a valid role
+        ".validate": "newData.hasChildren(['uid', 'email', 'role', 'createdAt']) && newData.child('uid').isString() && newData.child('email').isString() && newData.child('role').isString() && newData.child('role').val().matches(/^(volunteer|coordinator|admin)$/)"
+      }
+    },
+    "tasks": {
+      // Any authenticated user can read tasks
+      ".read": "auth != null",
+      ".indexOn": ["coordinatorId"],
+      "$taskId": {
+        // Coordinators and admins can create/update tasks
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'coordinator' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        // Volunteers can sign up for or leave a task
+        "volunteers": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        },
+        // Validate task fields
+        ".validate": "newData.hasChildren(['title', 'description', 'date', 'time', 'duration', 'location', 'volunteerSlots', 'coordinatorId', 'createdAt']) && newData.child('title').isString() && newData.child('description').isString() && newData.child('date').isString() && newData.child('time').isString() && newData.child('duration').isNumber() && newData.child('location').isString() && newData.child('volunteerSlots').isNumber() && newData.child('coordinatorId').isString()"
+      }
+    },
+    "reports": {
+      ".indexOn": ["volunteerUid", "coordinatorUid"],
+      // Allow list reads for query-based security for coordinators, admins, or volunteers querying their own reports.
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'coordinator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'volunteerUid' && query.equalTo === auth.uid))",
+      "$reportId": {
+        // Volunteer can read their own reports. Admin/Coordinator can read any.
+        ".read": "auth != null && (data.child('volunteerUid').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'coordinator' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        // Only coordinators and admins can write/create a report
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'coordinator' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "newData.hasChildren(['reportId', 'volunteerUid', 'taskId', 'coordinatorUid', 'generatedAt', 'reportContent']) && newData.child('reportContent').hasChildren(['taskRecap', 'volunteerPerformance'])"
+      }
+    }
+  }
+}
