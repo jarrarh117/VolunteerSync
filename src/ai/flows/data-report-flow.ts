@@ -8,7 +8,7 @@
  * - GenerateDataReportOutput - The return type for the generateDataReport function.
  */
 
-import { ai } from '@/ai/genkit';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 
 const TaskDetailSchema = z.object({
@@ -41,45 +41,73 @@ export type GenerateDataReportOutput = z.infer<typeof GenerateDataReportOutputSc
 export async function generateDataReport(
   input: GenerateDataReportInput
 ): Promise<GenerateDataReportOutput> {
-  return generateDataReportFlow(input);
-}
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY is not configured');
+    }
 
-const prompt = ai.definePrompt({
-  name: 'generateTaskSpecificDataReportPrompt',
-  input: { schema: GenerateDataReportInputSchema },
-  output: { schema: GenerateDataReportOutputSchema },
-  prompt: `You are a Volunteer Coordinator writing a performance review for a volunteer based on their work on a single task.
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-2.0-flash-exp',
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            taskRecap: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                date: { type: 'string' },
+                status: { type: 'string' },
+              },
+              required: ['title', 'date', 'status'],
+            },
+            volunteerPerformance: {
+              type: 'object',
+              properties: {
+                summary: { type: 'string' },
+                strengths: { type: 'array', items: { type: 'string' } },
+                suggestions: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['summary', 'strengths', 'suggestions'],
+            },
+          },
+          required: ['taskRecap', 'volunteerPerformance'],
+        },
+      },
+    });
 
-  Volunteer's Email: {{{volunteerEmail}}}
-  
-  Task Details:
-  - Title: {{{task.title}}}
-  - Description: {{{task.description}}}
-  - Duration: {{{task.duration}}} hours
-  - Date: {{{task.date}}}
+    const prompt = `You are a Volunteer Coordinator writing a performance review for a volunteer based on their work on a single task.
 
-  Analyze the provided task information and generate a structured performance report focusing ONLY on this task.
-  1.  **Task Recap:**
-      - Restate the task title.
-      - Restate the completion date.
-      - Set the status to 'Completed'.
-  2.  **Volunteer Performance Analysis:**
-      - Write a brief, positive summary (2-3 sentences) of the volunteer's contribution to this specific mission.
-      - Identify 2-3 key strength areas demonstrated during this task (e.g., 'Teamwork', 'Problem-Solving', 'Community Engagement').
-      - Provide 1-2 constructive and encouraging suggestions for future roles based on their performance here.
-  
-  Return the final analysis in the structured JSON format specified. The tone should be encouraging and appreciative.
-  `,
-});
+Volunteer's Email: ${input.volunteerEmail}
 
-const generateDataReportFlow = ai.defineFlow(
-  {
-    name: 'generateDataReportFlow',
-    inputSchema: GenerateDataReportInputSchema,
-    outputSchema: GenerateDataReportOutputSchema,
-  },
-  async (input) => {
-    const { output } = await prompt(input);
-    return output!;
+Task Details:
+- Title: ${input.task.title}
+- Description: ${input.task.description}
+- Duration: ${input.task.duration} hours
+- Date: ${input.task.date}
+
+Analyze the provided task information and generate a structured performance report focusing ONLY on this task.
+1.  **Task Recap:**
+    - Restate the task title.
+    - Restate the completion date.
+    - Set the status to 'Completed'.
+2.  **Volunteer Performance Analysis:**
+    - Write a brief, positive summary (2-3 sentences) of the volunteer's contribution to this specific mission.
+    - Identify 2-3 key strength areas demonstrated during this task (e.g., 'Teamwork', 'Problem-Solving', 'Community Engagement').
+    - Provide 1-2 constructive and encouraging suggestions for future roles based on their performance here.
+
+Return the final analysis in the structured JSON format specified. The tone should be encouraging and appreciative.`;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response.text();
+    const parsed = JSON.parse(response);
+    
+    return GenerateDataReportOutputSchema.parse(parsed);
+  } catch (error: any) {
+    console.error('Error generating report:', error);
+    throw new Error(`Failed to generate report: ${error.message}`);
   }
-);
+}
