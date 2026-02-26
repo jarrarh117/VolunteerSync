@@ -12,17 +12,32 @@ async function initializeAdminApp() {
     return globalForFirebase.adminApp;
   }
 
+  // Validate environment variables
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  if (!projectId) {
+    throw new Error('FIREBASE_PROJECT_ID environment variable is not set');
+  }
+  if (!clientEmail) {
+    throw new Error('FIREBASE_CLIENT_EMAIL environment variable is not set');
+  }
+  if (!privateKey) {
+    throw new Error('FIREBASE_PRIVATE_KEY environment variable is not set');
+  }
+
   const serviceAccount: ServiceAccount = {
-    projectId: process.env.FIREBASE_PROJECT_ID!,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
-    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    projectId,
+    clientEmail,
+    privateKey: privateKey.replace(/\\n/g, '\n'),
   };
 
   try {
     const newAdminApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
-    }, 'admin-app-for-server-actions'); // Use a unique name for the app
+    }, 'admin-app-for-server-actions');
 
     globalForFirebase.adminApp = newAdminApp;
     return newAdminApp;
